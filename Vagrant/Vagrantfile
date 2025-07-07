@@ -1,0 +1,51 @@
+Vagrant.configure("2") do |vgt|
+  vgt.vm.box_check_update = false
+  VMs = {
+    "VM1-Grupo-DevOps" => {
+      :box => "ubuntu/bionic64",
+      :ip => "192.168.56.10",
+      :hostname => "ubuntu-devops"
+    },
+    "VM2-Grupo-DevOps" => {
+      :box => "fedora/39-cloud-base",
+      :ip => "192.168.56.11",
+      :hostname => "fedora-devops"
+    }
+  }
+  VMs.each do |name, options|
+    vgt.vm.define name do |so|
+      so.vm.box = options[:box]
+      so.vm.hostname = options[:hostname]
+      so.vm.network "private_network", ip: options[:ip]
+
+      so.vm.provider "virtualbox" do |vb|
+        vb.name = name
+        vb.memory = 2048
+        vb.cpus = 2
+
+        vb.customize ["modifyvm", :id, "--ioapic", "on"]
+        vb.customize ["storagectl", :id, "--name", "IDE", "--remove"]
+        vb.customize ["storagectl", :id, "--name", "SCSI", "--remove"] if name == "VM1-Grupo-DevOps"
+        vb.customize ["storagectl", :id, "--name", "SATA", "--add", "sata", "--controller", "IntelAHCI"]
+        vb.customize ["modifyvm", :id, "--boot1", "disk", "--boot2", "none", "--boot3", "none"]
+
+        so.vm.provision "shell", path: "../Bash_script/vm_config/Sudoers_DevOps.sh"
+        so.vm.provision "shell", path: "../Bash_script/vm_config/Hosts_DevOps.sh"
+        so.vm.provision "shell", path: "../Bash_script/vm_config/SetIP_Fedora_DevOps.sh"
+        so.vm.provision "shell", path: "../Bash_script/vm_config/Install-tools_DevOps.sh"
+        so.vm.provision "shell", path: "../Bash_script/vm_config/SSHKeys_DevOps.sh"
+
+        disk_path = File.join(Dir.home, "VirtualBox VMs", name)
+        vb.customize ["storageattach", :id, "--storagectl", "SATA", "--port", 0, "--device", 0, "--type", "hdd", "--medium", "#{disk_path}/ubuntu-bionic-18.04-cloudimg.vmdk"] if name == "VM1-Grupo-DevOps"
+        vb.customize ["storageattach", :id, "--storagectl", "SATA", "--port", 5, "--device", 0, "--type", "hdd", "--medium", "#{disk_path}/ubuntu-bionic-18.04-cloudimg-configdrive.vmdk"] if name == "VM1-Grupo-DevOps"
+        vb.customize ["storageattach", :id, "--storagectl", "SATA", "--port", 0, "--device", 0, "--type", "hdd", "--medium", "#{disk_path}/Fedora-Cloud-Base-Vagrant-39-1.5.x86_64.vmdk"] if name == "VM2-Grupo-DevOps"
+
+        [5, 3, 2, 1].each_with_index do |size, index|
+          disk_name = File.join(disk_path, "#{options[:hostname]}-disk#{index + 1}.vdi")
+          vb.customize ["createhd", "--filename", disk_name, "--size", size * 1024]
+          vb.customize ["storageattach", :id, "--storagectl", "SATA", "--port", index + 1, "--device", 0, "--type", "hdd", "--medium", disk_name]
+        end
+      end
+    end
+  end
+end
